@@ -1,12 +1,10 @@
 # Name: Martin Jimenez
-# Date: 05/05/2023 (last updated)
-
-import pathlib
+# Date: 05/08/2023 (last updated)
 
 import torch
 import torchvision.io
 from torch import nn
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 
 import numpy as np
@@ -14,14 +12,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image
 
-import requests
-import zipfile
 from pathlib import Path
-from typing import Tuple, Dict, List
+from typing import List
 import os
 
 import random
-from timeit import default_timer as timer
+import time
 
 from mlxtend.plotting import plot_confusion_matrix
 from torchmetrics import ConfusionMatrix
@@ -54,11 +50,13 @@ test_data = datasets.ImageFolder(root=str(test_dir),
 class_names = train_data.classes
 
 # set up dataloaders
+BATCH_SIZE = 8
+
 train_dataloader = DataLoader(dataset=train_data,
-                              batch_size=8,
+                              batch_size=BATCH_SIZE,
                               shuffle=True)
 test_dataloader = DataLoader(dataset=test_data,
-                             batch_size=8,
+                             batch_size=BATCH_SIZE,
                              shuffle=False)
 
 # visualize images
@@ -155,7 +153,7 @@ def train_step(model: torch.nn.Module,
         optimizer.step()
 
         # calculate the accuracy
-        pred_class = torch.argmax(pred)
+        pred_class = torch.argmax(pred, dim=1)
         train_acc += (pred_class == y).sum().item() / len(pred)
 
     train_loss /= len(dataloader)
@@ -183,7 +181,7 @@ def test_step(model: torch.nn.Module,
             loss = loss_fn(test_pred, y)
             test_loss += loss.item()
 
-            test_pred_class = torch.argmax(test_pred)
+            test_pred_class = torch.argmax(test_pred, dim=1)
             test_acc += (test_pred_class == y).sum().item() / len(test_pred)
 
     test_loss /= len(dataloader)
@@ -199,6 +197,9 @@ def train_model(model: torch.nn.Module,
                 optimizer: torch.optim.Optimizer,
                 epochs: int,
                 device = device):
+    """Runs train and test loops for a given number of epochs"""
+    print(f'Training model...\n')
+
     results = {'train_loss': [],
                'train_acc': [],
                'test_loss': [],
@@ -220,8 +221,8 @@ def train_model(model: torch.nn.Module,
         results['test_loss'].append(test_loss)
         results['test_acc'].append(test_acc)
 
-        print(f'Epoch: {epoch} | Train Loss: {train_loss:.4f} | Train Accuracy: {train_acc:.4f} | '
-              f'Test Loss: {test_loss:.4f} | Test Accuracy: {test_acc:.4f}')
+        print(f'Epoch: {epoch} | Train Loss: {train_loss:.4f} | Train Accuracy: {train_acc*100:.2f}% | '
+              f'Test Loss: {test_loss:.4f} | Test Accuracy: {test_acc*100:.2f}%')
 
     return results
 
@@ -230,7 +231,7 @@ def make_predictions(model: torch.nn.Module,
                      class_names: List[str],
                      dataloader: torch.utils.data.DataLoader,
                      device = device):
-
+    """Makes 16 random predictions on a trained model"""
     model.to(device)
     # make prediction
     model.eval()
@@ -266,6 +267,7 @@ def make_single_prediction(model: torch.nn.Module,
                            img_path: str,
                            class_names: List[str],
                            device = device):
+    """Makes a prediction on a trained model given the image file path"""
     image = torchvision.io.read_image(str(img_path)).type(torch.float32)
 
     image /= 255
@@ -292,8 +294,50 @@ def make_single_prediction(model: torch.nn.Module,
     plt.show()
 
 
+def set_confusion_matrix(model: torch.nn.Module,
+                         class_names: List[str],
+                         dataloader: torch.utils.data.DataLoader):
+    """Plots a confusion matrix on a trained model"""
+    # make predictions with trained model
+    pred_labels = []
+
+    acc = 0
+
+    model.eval()
+    with torch.inference_mode():
+        for X, y in dataloader:
+            pred = model(X)
+
+            pred_label = torch.argmax(pred, dim=1)
+            pred_labels.append(pred_label)
+
+            acc += (pred_label == y).sum().item() / len(pred)
+
+    acc /= len(dataloader)
+
+    # concatenate list of predictions into a tensor
+    pred_labels_tensor = torch.cat(pred_labels)
+
+    # setup confusion matrix
+    confmat = ConfusionMatrix(num_classes=len(class_names),
+                              task='multiclass')
+    confmat_tensor = confmat(preds=pred_labels_tensor,
+                             target=torch.from_numpy(np.array(dataloader.dataset.targets)))
+
+    # plot the confusion matrix
+    fig, ax = plot_confusion_matrix(conf_mat=confmat_tensor.numpy(),
+                                    class_names=class_names,
+                                    figsize=(10, 7))
+
+    mode = str(dataloader.dataset.root).split('pokemon_images\\')[1]
+    print(f'Model Accuracy for {mode} data is {acc*100:.2f}%')
+
+    plt.title(f'{mode} data')
+    plt.show()
+
 def save_model(model: torch.nn.Module,
                model_name: str):
+    """Saves a model to a 'model_saves' folder"""
     # saving the model
     model_path = Path('model_saves')
     model_path.mkdir(parents=True, exist_ok=True)
@@ -305,6 +349,7 @@ def save_model(model: torch.nn.Module,
 
 
 def load_model(model_name: str):
+    """Loads a saved model from the 'model_saves' folder"""
     # load the model
     model_path = Path('model_saves')
     model_path.mkdir(parents=True, exist_ok=True)
@@ -321,14 +366,17 @@ def load_model(model_name: str):
 
 
 if __name__ == '__main__':
-    # model_1 = PokemonIdentifier(input_size=3,
-    #                             hidden_size=10,
-    #                             output_size=len(class_names)).to(device)
+    current_model = load_model(model_name='model_1.pth')
+    # current_model = PokemonIdentifier(input_size=3,
+    #                                   hidden_size=16,
+    #                                   output_size=len(class_names)).to(device)
     # loss_function = nn.CrossEntropyLoss()
-    # optimizer = torch.optim.Adam(params=model_1.parameters(),
+    # optimizer = torch.optim.Adam(params=current_model.parameters(),
     #                              lr=0.001)
     #
-    # model_1_results = train_model(model=model_1,
+    # start_time = time.time()
+    #
+    # model_1_results = train_model(model=current_model,
     #                               train_dataloader=train_dataloader,
     #                               test_dataloader=test_dataloader,
     #                               loss_fn=loss_function,
@@ -336,49 +384,90 @@ if __name__ == '__main__':
     #                               epochs=10,
     #                               device=device)
     #
-    # save_model(model=model_1,
-    #            model_name='model_1.pth')
+    # end_time = time.time()
+    # total_time = end_time - start_time
+    # print(f'Took {total_time:.2f}s to train the model')
+    #
+    # save_model(model=current_model,
+    #            model_name='model_4.pth')
 
-    model_1 = load_model(model_name='model_1.pth')
+    simple_transform = transforms.Compose([transforms.Resize(size=(224, 224))])
 
-    transform = transforms.Compose([transforms.Resize(size=(224, 224))])
-
-    make_predictions(model=model_1,
+    make_predictions(model=current_model,
                      class_names=class_names,
                      dataloader=test_dataloader,
                      device=device)
 
-    make_single_prediction(model=model_1,
-                           transform=transform,
-                           img_path=r'data\pokemon_images\test\Venusaur\2f46340d214f481cbac464821ad4d069.jpg',
+    set_confusion_matrix(model=current_model,
+                         class_names=class_names,
+                         dataloader=test_dataloader)
+
+    make_single_prediction(model=current_model,
+                           transform=simple_transform,
+                           img_path=r'data\pokemon_images\test\Squirtle\martin_drawing_squirtle.jpg',
                            class_names=class_names,
                            device=device)
 
+    make_single_prediction(model=current_model,
+                           transform=simple_transform,
+                           img_path=r'data\pokemon_images\test\Charmander\bryan_drawing_charmander.jpg',
+                           class_names=class_names,
+                           device=device)
+
+    # USE TO COUNT DATA IN FOLDERS
+    '''
+    for pokemon in class_names:
+        for folder in ['test', 'train']:
+            pokemon_path_list = list(image_path.glob(f'{folder}/{pokemon}/*.jpg'))
+            print(f'there are {len(pokemon_path_list)} images of {pokemon} in the {folder} folder')
+        print('\n')
+    '''
+
+    # USE IN CASE THERE IS TOO MUCH DATA; MOVES DATA TO EXTRA FOLDER
+    '''
+    import shutil
+    pokemon_path_list = list(image_path.glob('train/Squirtle/*.jpg'))
+    for i in range(70):
+        source_file = random.choice(pokemon_path_list)
+        destination_file = str(source_file).split('train\\')[1]
+        shutil.move(source_file, destination_file)
+
+        pokemon_path_list = list(image_path.glob('train/Squirtle/*.jpg'))
+        print(f'Moved {source_file} to {destination_file}')
+    '''
+
+    # USE IN CASE ALL IMAGES AREN'T IN JPG FILE FORMAT:
+    '''
+    def convert_png_to_jpg(png_file, output_dir):
+        # Open the PNG image
+        image = Image.open(png_file)
+
+        # Convert the image to RGB format (if it's not already)
+        if image.mode != 'RGB':
+            image = image.convert('RGB')
+
+        # Generate the output file path and filename
+        filename = os.path.basename(png_file)
+        jpg_file = os.path.join(output_dir, os.path.splitext(filename)[0] + '.jpg')
+
+        # Save the image as a JPG file
+        image.save(jpg_file, 'JPEG')
+
+        print(f"Converted {png_file} to {jpg_file}")
 
 
+    for pokemon in class_names:
+        for folder in ['test', 'train']:
+            # Path to the directory containing PNG files
+            input_dir = f'data/pokemon_images/{folder}/{pokemon}'
 
+            # Path to the directory where JPG files will be saved
+            output_dir = f'data/pokemon_images/{folder}/{pokemon}'
 
-    # make predictions with trained model
-    pred_labels = []
-    model_1.eval()
-    with torch.inference_mode():
-        for X, y in test_dataloader:
-            pred = model_1(X)
-
-            pred_label = torch.softmax(pred.squeeze(), dim=0).argmax(dim=1)
-            pred_labels.append(pred_label)
-
-    # concatenate list of predictions into a tensor
-    pred_labels_tensor = torch.cat(pred_labels)
-
-    # setup confusion matrix
-    confmat = ConfusionMatrix(num_classes=len(class_names),
-                              task='multiclass')
-    confmat_tensor = confmat(preds=pred_labels_tensor,
-                             target=torch.from_numpy(np.array(test_data.targets)))
-
-    # plot the confusion matrix
-    fig, ax = plot_confusion_matrix(conf_mat=confmat_tensor.numpy(),
-                                    class_names=class_names,
-                                    figsize=(10, 7))
-    plt.show()
+            # Iterate over PNG files in the input directory
+            for filename in os.listdir(input_dir):
+                if filename.endswith('.png'):
+                    png_file = os.path.join(input_dir, filename)
+                    convert_png_to_jpg(png_file, output_dir)
+                    os.remove(png_file)
+    '''
