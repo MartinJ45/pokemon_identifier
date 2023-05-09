@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 from PIL import Image
 
 from pathlib import Path
-from typing import List
+from typing import List, Dict
 import os
 
 import random
@@ -37,15 +37,18 @@ image_path = data_path / 'pokemon_images'
 train_dir = image_path / 'train'
 test_dir = image_path / 'test'
 
-# set up transform
-data_transform = transforms.Compose([transforms.Resize(size=(224, 224)),
+# set up transforms
+train_transform = transforms.Compose([transforms.Resize(size=(224, 224)),
+                                      transforms.TrivialAugmentWide(num_magnitude_bins=31),
+                                      transforms.ToTensor()])
+test_transform = transforms.Compose([transforms.Resize(size=(224, 224)),
                                      transforms.ToTensor()])
 
 # set up data
 train_data = datasets.ImageFolder(root=str(train_dir),
-                                  transform=data_transform)
+                                  transform=train_transform)
 test_data = datasets.ImageFolder(root=str(test_dir),
-                                 transform=data_transform)
+                                 transform=test_transform)
 
 class_names = train_data.classes
 
@@ -85,38 +88,38 @@ class PokemonIdentifier(nn.Module):
         super().__init__()
         self.conv_block_1 = nn.Sequential(nn.Conv2d(in_channels=input_size,
                                                     out_channels=hidden_size,
-                                                    kernel_size=3,
+                                                    kernel_size=1,
                                                     stride=1,
                                                     padding=0),
                                           nn.ReLU(),
                                           nn.Conv2d(in_channels=hidden_size,
                                                     out_channels=hidden_size,
-                                                    kernel_size=3,
+                                                    kernel_size=1,
                                                     stride=1,
                                                     padding=0),
                                           nn.ReLU(),
                                           nn.MaxPool2d(kernel_size=2))
         self.conv_block_2 = nn.Sequential(nn.Conv2d(in_channels=hidden_size,
                                                     out_channels=hidden_size,
-                                                    kernel_size=3,
+                                                    kernel_size=1,
                                                     stride=1,
                                                     padding=0),
                                           nn.ReLU(),
                                           nn.Conv2d(in_channels=hidden_size,
                                                     out_channels=hidden_size,
-                                                    kernel_size=3,
+                                                    kernel_size=1,
                                                     stride=1,
                                                     padding=0),
                                           nn.ReLU(),
                                           nn.MaxPool2d(kernel_size=2))
         self.classifier = nn.Sequential(nn.Flatten(),
-                                        nn.Linear(in_features=hidden_size*53*53,
+                                        nn.Linear(in_features=hidden_size*56*56,
                                                   out_features=output_size))
 
     def forward(self, x):
-        x = self.conv_block_1(x)    # 1, 3, 224, 224 -> 1, 10, 110, 110
-        x = self.conv_block_2(x)    # 1, 10, 110, 110 -> 1, 10, 53, 53
-        x = self.classifier(x)      # 1, 10, 53, 53 -> 1, 9
+        x = self.conv_block_1(x)    # 8, 3, 224, 224 -> 8, 10, 112, 112
+        x = self.conv_block_2(x)    # 8, 10, 112, 112 -> 8, 10, 56, 56
+        x = self.classifier(x)      # 8, 10, 56, 56 -> 8, 9
         return x
 
 
@@ -227,6 +230,40 @@ def train_model(model: torch.nn.Module,
     return results
 
 
+# plot loss curves
+def plot_loss_curves(results: Dict[str, List[float]]):
+    """Plots training curves of a results dictionary"""
+    # get the loss values of the results dictionary
+    loss = results['train_loss']
+    test_loss = results['test_loss']
+
+    # get accuracy
+    acc = results['train_acc']
+    test_acc = results['test_acc']
+
+    epochs = range(len(results['train_loss']))
+
+    # set up the plot
+    plt.figure(figsize=(15, 7))
+
+    # plot the loss
+    plt.subplot(1, 2, 1)
+    plt.plot(epochs, loss, label='train_loss')
+    plt.plot(epochs, test_loss, label='test_loss')
+    plt.title('Loss')
+    plt.xlabel('Epochs')
+    plt.legend()
+
+    plt.subplot(1, 2, 2)
+    plt.plot(epochs, acc, label='train_acc')
+    plt.plot(epochs, test_acc, label='test_acc')
+    plt.title('Acc')
+    plt.xlabel('Epochs')
+    plt.legend()
+
+    plt.show()
+
+
 def make_predictions(model: torch.nn.Module,
                      class_names: List[str],
                      dataloader: torch.utils.data.DataLoader,
@@ -282,6 +319,11 @@ def make_single_prediction(model: torch.nn.Module,
         image = image.unsqueeze(dim=0)
 
         image_pred = model(image.to(device))
+
+    pred_percent = image_pred.softmax(dim=1)
+    for i in range(len(class_names)):
+        end = '\n' if i == len(class_names) - 1 else ', '
+        print(f'{pred_percent[0][i]*100:.4f}% {class_names[i]}', end=end)
 
     image_pred_label = torch.argmax(image_pred)
 
@@ -357,7 +399,7 @@ def load_model(model_name: str):
     model_save_path = model_path / model_name
 
     loaded_model = PokemonIdentifier(input_size=3,
-                                     hidden_size=10,
+                                     hidden_size=32,
                                      output_size=len(class_names))
 
     loaded_model.load_state_dict(torch.load(model_save_path))
@@ -366,9 +408,9 @@ def load_model(model_name: str):
 
 
 if __name__ == '__main__':
-    current_model = load_model(model_name='model_1.pth')
+    current_model = load_model(model_name='model_9_1-9.pth')
     # current_model = PokemonIdentifier(input_size=3,
-    #                                   hidden_size=16,
+    #                                   hidden_size=32,
     #                                   output_size=len(class_names)).to(device)
     # loss_function = nn.CrossEntropyLoss()
     # optimizer = torch.optim.Adam(params=current_model.parameters(),
@@ -376,41 +418,37 @@ if __name__ == '__main__':
     #
     # start_time = time.time()
     #
-    # model_1_results = train_model(model=current_model,
-    #                               train_dataloader=train_dataloader,
-    #                               test_dataloader=test_dataloader,
-    #                               loss_fn=loss_function,
-    #                               optimizer=optimizer,
-    #                               epochs=10,
-    #                               device=device)
+    # model_results = train_model(model=current_model,
+    #                             train_dataloader=train_dataloader,
+    #                             test_dataloader=test_dataloader,
+    #                             loss_fn=loss_function,
+    #                             optimizer=optimizer,
+    #                             epochs=40,
+    #                             device=device)
     #
     # end_time = time.time()
     # total_time = end_time - start_time
     # print(f'Took {total_time:.2f}s to train the model')
     #
     # save_model(model=current_model,
-    #            model_name='model_4.pth')
+    #            model_name='model_9_1-9.pth')
+    #
+    # plot_loss_curves(results=model_results)
 
     simple_transform = transforms.Compose([transforms.Resize(size=(224, 224))])
 
-    make_predictions(model=current_model,
-                     class_names=class_names,
-                     dataloader=test_dataloader,
-                     device=device)
-
-    set_confusion_matrix(model=current_model,
-                         class_names=class_names,
-                         dataloader=test_dataloader)
-
-    make_single_prediction(model=current_model,
-                           transform=simple_transform,
-                           img_path=r'data\pokemon_images\test\Squirtle\martin_drawing_squirtle.jpg',
-                           class_names=class_names,
-                           device=device)
+    # set_confusion_matrix(model=current_model,
+    #                      class_names=class_names,
+    #                      dataloader=test_dataloader)
+    #
+    # make_predictions(model=current_model,
+    #                  class_names=class_names,
+    #                  dataloader=test_dataloader,
+    #                  device=device)
 
     make_single_prediction(model=current_model,
                            transform=simple_transform,
-                           img_path=r'data\pokemon_images\test\Charmander\bryan_drawing_charmander.jpg',
+                           img_path=str(random.choice(image_path_list)),
                            class_names=class_names,
                            device=device)
 
