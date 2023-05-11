@@ -303,7 +303,8 @@ def make_single_prediction(model: torch.nn.Module,
                            transform,
                            img_path: str,
                            class_names: List[str],
-                           device = device):
+                           device = device,
+                           output_num: int = 5):
     """Makes a prediction on a trained model given the image file path"""
     image = torchvision.io.read_image(str(img_path)).type(torch.float32)
 
@@ -322,18 +323,10 @@ def make_single_prediction(model: torch.nn.Module,
 
     pred_percent = image_pred.softmax(dim=1)
 
-    pred_percent_dict = {}
-    for i in range(len(class_names)):
-        pred_percent_dict.update({class_names[i]: pred_percent[0][i].item()*100})
-
-    print('Top 5 percentages | ', end='')
-    for i in range(5):
-        percent = sorted(pred_percent_dict.values(), reverse=True)[i]
-        pokemon = list(pred_percent_dict.keys())[list(pred_percent_dict.values()).index(percent)]
-
-        end = '\n' if i == 4 else ', '
-
-        print(f'{percent:.4f}% {pokemon}', end=end)
+    if output_num:
+        print_predictions(prediction=pred_percent,
+                          class_names=class_names,
+                          pred_output=output_num)
 
     image_pred_label = torch.argmax(image_pred)
 
@@ -344,6 +337,23 @@ def make_single_prediction(model: torch.nn.Module,
     plt.title(pred_class)
     plt.axis(False)
     plt.show()
+
+
+def print_predictions(prediction: torch.tensor,
+                      class_names: List[str],
+                      pred_output: int):
+    pred_percent_dict = {}
+    for i in range(len(class_names)):
+        pred_percent_dict.update({class_names[i]: prediction[0][i].item() * 100})
+
+    print(f'Top {pred_output} percentages | ', end='')
+    for i in range(pred_output):
+        percent = sorted(pred_percent_dict.values(), reverse=True)[i]
+        pokemon = list(pred_percent_dict.keys())[list(pred_percent_dict.values()).index(percent)]
+
+        end = '\n' if i == pred_output - 1 else ', '
+
+        print(f'{percent:.4f}% {pokemon}', end=end)
 
 
 def set_confusion_matrix(model: torch.nn.Module,
@@ -418,58 +428,59 @@ def load_model(model_name: str):
 
 
 if __name__ == '__main__':
-    current_model = load_model(model_name='model_9_1-18.pth')
-    # current_model = PokemonIdentifier(input_size=3,
-    #                                   hidden_size=32,
-    #                                   output_size=len(class_names)).to(device)
-    # loss_function = nn.CrossEntropyLoss()
-    # optimizer = torch.optim.Adam(params=current_model.parameters(),
-    #                              lr=0.001)
-    #
-    # start_time = time.time()
-    #
-    # model_results = train_model(model=current_model,
-    #                             train_dataloader=train_dataloader,
-    #                             test_dataloader=test_dataloader,
-    #                             loss_fn=loss_function,
-    #                             optimizer=optimizer,
-    #                             epochs=10,
-    #                             device=device)
-    #
-    # end_time = time.time()
-    # total_time = end_time - start_time
-    # print(f'Took {total_time:.2f}s to train the model')
-    #
-    # save_model(model=current_model,
-    #            model_name='model_9_1-18.pth')
-    #
-    # plot_loss_curves(results=model_results)
+    # current_model = load_model(model_name='model_9_1-18.pth')
+    current_model = PokemonIdentifier(input_size=3,
+                                      hidden_size=32,
+                                      output_size=len(class_names)).to(device)
+    loss_function = nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(params=current_model.parameters(),
+                                 lr=0.001)
+
+    start_time = time.time()
+
+    model_results = train_model(model=current_model,
+                                train_dataloader=train_dataloader,
+                                test_dataloader=test_dataloader,
+                                loss_fn=loss_function,
+                                optimizer=optimizer,
+                                epochs=30,
+                                device=device)
+
+    end_time = time.time()
+    total_time = end_time - start_time
+    print(f'Took {total_time:.2f}s to train the model')
+
+    save_model(model=current_model,
+               model_name='model_9a_1-18.pth')
+
+    plot_loss_curves(results=model_results)
 
     simple_transform = transforms.Compose([transforms.Resize(size=(224, 224))])
 
-    # set_confusion_matrix(model=current_model,
-    #                      class_names=class_names,
-    #                      dataloader=test_dataloader)
-    #
-    # make_predictions(model=current_model,
-    #                  class_names=class_names,
-    #                  dataloader=test_dataloader,
-    #                  device=device)
+    set_confusion_matrix(model=current_model,
+                         class_names=class_names,
+                         dataloader=test_dataloader)
+
+    make_predictions(model=current_model,
+                     class_names=class_names,
+                     dataloader=test_dataloader,
+                     device=device)
 
     make_single_prediction(model=current_model,
                            transform=simple_transform,
                            img_path=str(random.choice(image_path_list)),
                            class_names=class_names,
-                           device=device)
+                           device=device,
+                           output_num=5)
 
     # USE TO COUNT DATA IN FOLDERS
-    '''
+
     for pokemon in class_names:
         for folder in ['test', 'train']:
             pokemon_path_list = list(image_path.glob(f'{folder}/{pokemon}/*.jpg'))
             print(f'there are {len(pokemon_path_list)} images of {pokemon} in the {folder} folder')
         print('\n')
-    '''
+
 
     # USE IN CASE THERE IS TOO MUCH DATA; MOVES DATA TO EXTRA FOLDER
     '''
