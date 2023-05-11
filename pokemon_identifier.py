@@ -1,5 +1,5 @@
 # Name: Martin Jimenez
-# Date: 05/09/2023 (last updated)
+# Date: 05/11/2023 (last updated)
 
 import torch
 import torchvision.io
@@ -321,9 +321,19 @@ def make_single_prediction(model: torch.nn.Module,
         image_pred = model(image.to(device))
 
     pred_percent = image_pred.softmax(dim=1)
+
+    pred_percent_dict = {}
     for i in range(len(class_names)):
-        end = '\n' if i == len(class_names) - 1 else ', '
-        print(f'{pred_percent[0][i]*100:.4f}% {class_names[i]}', end=end)
+        pred_percent_dict.update({class_names[i]: pred_percent[0][i].item()*100})
+
+    print('Top 5 percentages | ', end='')
+    for i in range(5):
+        percent = sorted(pred_percent_dict.values(), reverse=True)[i]
+        pokemon = list(pred_percent_dict.keys())[list(pred_percent_dict.values()).index(percent)]
+
+        end = '\n' if i == 4 else ', '
+
+        print(f'{percent:.4f}% {pokemon}', end=end)
 
     image_pred_label = torch.argmax(image_pred)
 
@@ -408,7 +418,7 @@ def load_model(model_name: str):
 
 
 if __name__ == '__main__':
-    current_model = load_model(model_name='model_9_1-9.pth')
+    current_model = load_model(model_name='model_9_1-18.pth')
     # current_model = PokemonIdentifier(input_size=3,
     #                                   hidden_size=32,
     #                                   output_size=len(class_names)).to(device)
@@ -423,7 +433,7 @@ if __name__ == '__main__':
     #                             test_dataloader=test_dataloader,
     #                             loss_fn=loss_function,
     #                             optimizer=optimizer,
-    #                             epochs=40,
+    #                             epochs=10,
     #                             device=device)
     #
     # end_time = time.time()
@@ -431,7 +441,7 @@ if __name__ == '__main__':
     # print(f'Took {total_time:.2f}s to train the model')
     #
     # save_model(model=current_model,
-    #            model_name='model_9_1-9.pth')
+    #            model_name='model_9_1-18.pth')
     #
     # plot_loss_curves(results=model_results)
 
@@ -464,38 +474,40 @@ if __name__ == '__main__':
     # USE IN CASE THERE IS TOO MUCH DATA; MOVES DATA TO EXTRA FOLDER
     '''
     import shutil
-    pokemon_path_list = list(image_path.glob('train/Squirtle/*.jpg'))
-    for i in range(70):
+    pokemon = 'Bulbasaur'
+    folder = 'train'
+    pokemon_path_list = list(image_path.glob(f'{folder}/{pokemon}/*.jpg'))
+    for i in range(31):
         source_file = random.choice(pokemon_path_list)
         destination_file = str(source_file).split('train\\')[1]
         shutil.move(source_file, destination_file)
 
-        pokemon_path_list = list(image_path.glob('train/Squirtle/*.jpg'))
+        pokemon_path_list = list(image_path.glob(f'{folder}/{pokemon}/*.jpg'))
         print(f'Moved {source_file} to {destination_file}')
     '''
 
     # USE IN CASE ALL IMAGES AREN'T IN JPG FILE FORMAT:
     '''
-    def convert_png_to_jpg(png_file, output_dir):
+    def convert_file_to_jpg(img_file, output_dir):
         # Open the PNG image
-        image = Image.open(png_file)
+        image = Image.open(img_file)
 
         # Convert the image to RGB format (if it's not already)
         if image.mode != 'RGB':
             image = image.convert('RGB')
 
         # Generate the output file path and filename
-        filename = os.path.basename(png_file)
+        filename = os.path.basename(img_file)
         jpg_file = os.path.join(output_dir, os.path.splitext(filename)[0] + '.jpg')
 
         # Save the image as a JPG file
         image.save(jpg_file, 'JPEG')
 
-        print(f"Converted {png_file} to {jpg_file}")
+        print(f"Converted {img_file} to {jpg_file}")
 
 
     for pokemon in class_names:
-        for folder in ['test', 'train']:
+        for folder in ['train', 'test']:
             # Path to the directory containing PNG files
             input_dir = f'data/pokemon_images/{folder}/{pokemon}'
 
@@ -503,9 +515,10 @@ if __name__ == '__main__':
             output_dir = f'data/pokemon_images/{folder}/{pokemon}'
 
             # Iterate over PNG files in the input directory
+            img_file_type = '.webp'
             for filename in os.listdir(input_dir):
-                if filename.endswith('.png'):
-                    png_file = os.path.join(input_dir, filename)
-                    convert_png_to_jpg(png_file, output_dir)
-                    os.remove(png_file)
+                if filename.endswith(img_file_type):
+                    img_file = os.path.join(input_dir, filename)
+                    convert_file_to_jpg(img_file, output_dir)
+                    os.remove(img_file)
     '''
