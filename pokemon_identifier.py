@@ -1,5 +1,5 @@
 # Name: Martin Jimenez
-# Date: 05/11/2023 (last updated)
+# Date: 05/15/2023 (last updated)
 
 import torch
 import torchvision.io
@@ -21,6 +21,8 @@ import time
 
 from mlxtend.plotting import plot_confusion_matrix
 from torchmetrics import ConfusionMatrix
+
+from tqdm.auto import tqdm
 
 """
 Test data downloaded from: https://www.kaggle.com/datasets/lantian773030/pokemonclassification?resource=download
@@ -50,10 +52,14 @@ train_data = datasets.ImageFolder(root=str(train_dir),
 test_data = datasets.ImageFolder(root=str(test_dir),
                                  transform=test_transform)
 
+# img, label = next(iter(train_data))
+# plt.imshow(img.permute(1, 2, 0))
+# plt.show()
+
 class_names = train_data.classes
 
 # set up dataloaders
-BATCH_SIZE = 8
+BATCH_SIZE = 32
 
 train_dataloader = DataLoader(dataset=train_data,
                               batch_size=BATCH_SIZE,
@@ -117,9 +123,9 @@ class PokemonIdentifier(nn.Module):
                                                   out_features=output_size))
 
     def forward(self, x):
-        x = self.conv_block_1(x)    # 8, 3, 224, 224 -> 8, 10, 112, 112
-        x = self.conv_block_2(x)    # 8, 10, 112, 112 -> 8, 10, 56, 56
-        x = self.classifier(x)      # 8, 10, 56, 56 -> 8, 9
+        x = self.conv_block_1(x)    # 32, 3, 224, 224 -> 32, 10, 112, 112
+        x = self.conv_block_2(x)    # 32, 10, 112, 112 -> 32, 10, 56, 56
+        x = self.classifier(x)      # 32, 10, 56, 56 -> 32, 9
         return x
 
 
@@ -136,28 +142,31 @@ def train_step(model: torch.nn.Module,
     train_loss, train_acc = 0, 0
 
     # make prediction
-    for batch, (X, y) in enumerate(dataloader):  # counter, (img, label)
-        X, y = X.to(device), y.to(device)
+    with tqdm(total=len(dataloader), desc='Train Step', leave=False, ncols=75, disable=False) as train_bar:
+        for batch, (X, y) in enumerate(dataloader):  # counter, (img, label)
+            X, y = X.to(device), y.to(device)
 
-        # make prediction
-        pred = model(X)
+            # make prediction
+            pred = model(X)
 
-        # calculate the loss
-        loss = loss_fn(pred, y)  # (prediction, truth/label)
-        train_loss += loss.item()
+            # calculate the loss
+            loss = loss_fn(pred, y)  # (prediction, truth/label)
+            train_loss += loss.item()
 
-        # zero grad
-        optimizer.zero_grad()
+            # zero grad
+            optimizer.zero_grad()
 
-        # loss backwards
-        loss.backward()
+            # loss backwards
+            loss.backward()
 
-        # optimizer step
-        optimizer.step()
+            # optimizer step
+            optimizer.step()
 
-        # calculate the accuracy
-        pred_class = torch.argmax(pred, dim=1)
-        train_acc += (pred_class == y).sum().item() / len(pred)
+            # calculate the accuracy
+            pred_class = torch.argmax(pred, dim=1)
+            train_acc += (pred_class == y).sum().item() / len(pred)
+
+            train_bar.update()
 
     train_loss /= len(dataloader)
     train_acc /= len(dataloader)
@@ -175,17 +184,20 @@ def test_step(model: torch.nn.Module,
 
     test_loss, test_acc = 0, 0
 
-    with torch.inference_mode():
-        for batch, (X, y) in enumerate(dataloader):
-            X, y = X.to(device), y.to(device)
+    with tqdm(total=len(dataloader), desc='Test Step', leave=False, ncols=75, disable=False) as test_bar:
+        with torch.inference_mode():
+            for batch, (X, y) in enumerate(dataloader):
+                X, y = X.to(device), y.to(device)
 
-            test_pred = model(X)
+                test_pred = model(X)
 
-            loss = loss_fn(test_pred, y)
-            test_loss += loss.item()
+                loss = loss_fn(test_pred, y)
+                test_loss += loss.item()
 
-            test_pred_class = torch.argmax(test_pred, dim=1)
-            test_acc += (test_pred_class == y).sum().item() / len(test_pred)
+                test_pred_class = torch.argmax(test_pred, dim=1)
+                test_acc += (test_pred_class == y).sum().item() / len(test_pred)
+
+                test_bar.update()
 
     test_loss /= len(dataloader)
     test_acc /= len(dataloader)
@@ -207,7 +219,6 @@ def train_model(model: torch.nn.Module,
                'train_acc': [],
                'test_loss': [],
                'test_acc': []}
-
     for epoch in range(epochs):
         train_loss, train_acc = train_step(model=model,
                                            dataloader=train_dataloader,
@@ -397,6 +408,7 @@ def set_confusion_matrix(model: torch.nn.Module,
     plt.title(f'{mode} data')
     plt.show()
 
+
 def save_model(model: torch.nn.Module,
                model_name: str):
     """Saves a model to a 'model_saves' folder"""
@@ -419,7 +431,7 @@ def load_model(model_name: str):
     model_save_path = model_path / model_name
 
     loaded_model = PokemonIdentifier(input_size=3,
-                                     hidden_size=32,
+                                     hidden_size=64,
                                      output_size=len(class_names))
 
     loaded_model.load_state_dict(torch.load(model_save_path))
@@ -428,9 +440,9 @@ def load_model(model_name: str):
 
 
 if __name__ == '__main__':
-    # current_model = load_model(model_name='model_9_1-18.pth')
+    # current_model = load_model(model_name='model_11_1-18.pth')
     current_model = PokemonIdentifier(input_size=3,
-                                      hidden_size=32,
+                                      hidden_size=64,
                                       output_size=len(class_names)).to(device)
     loss_function = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(params=current_model.parameters(),
@@ -443,7 +455,7 @@ if __name__ == '__main__':
                                 test_dataloader=test_dataloader,
                                 loss_fn=loss_function,
                                 optimizer=optimizer,
-                                epochs=30,
+                                epochs=10,
                                 device=device)
 
     end_time = time.time()
@@ -451,11 +463,11 @@ if __name__ == '__main__':
     print(f'Took {total_time:.2f}s to train the model')
 
     save_model(model=current_model,
-               model_name='model_9a_1-18.pth')
+               model_name='model_11_1-26.pth')
 
     plot_loss_curves(results=model_results)
 
-    simple_transform = transforms.Compose([transforms.Resize(size=(224, 224))])
+    simple_transform = transforms.Compose([transforms.Resize(size=(224, 224), antialias=True)])
 
     set_confusion_matrix(model=current_model,
                          class_names=class_names,
@@ -474,21 +486,31 @@ if __name__ == '__main__':
                            output_num=5)
 
     # USE TO COUNT DATA IN FOLDERS
-
+    '''
+    total_train = 0
+    total_test = 0
     for pokemon in class_names:
         for folder in ['test', 'train']:
             pokemon_path_list = list(image_path.glob(f'{folder}/{pokemon}/*.jpg'))
             print(f'there are {len(pokemon_path_list)} images of {pokemon} in the {folder} folder')
-        print('\n')
 
+            if folder == 'test':
+                total_test += len(pokemon_path_list)
+            else:
+                total_train += len(pokemon_path_list)
+
+        print('\n')
+    print(f'there are {total_test} images in the test data')
+    print(f'there are {total_train} images in the train data')
+    '''
 
     # USE IN CASE THERE IS TOO MUCH DATA; MOVES DATA TO EXTRA FOLDER
     '''
     import shutil
-    pokemon = 'Bulbasaur'
+    pokemon = 'Pikachu'
     folder = 'train'
     pokemon_path_list = list(image_path.glob(f'{folder}/{pokemon}/*.jpg'))
-    for i in range(31):
+    for i in range(80):
         source_file = random.choice(pokemon_path_list)
         destination_file = str(source_file).split('train\\')[1]
         shutil.move(source_file, destination_file)
@@ -526,9 +548,9 @@ if __name__ == '__main__':
             output_dir = f'data/pokemon_images/{folder}/{pokemon}'
 
             # Iterate over PNG files in the input directory
-            img_file_type = '.webp'
+            base_file_type = '.jpg'
             for filename in os.listdir(input_dir):
-                if filename.endswith(img_file_type):
+                if not filename.endswith(base_file_type):
                     img_file = os.path.join(input_dir, filename)
                     convert_file_to_jpg(img_file, output_dir)
                     os.remove(img_file)
