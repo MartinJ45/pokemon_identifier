@@ -33,7 +33,7 @@ Train data downloaded from: https://www.kaggle.com/datasets/thedagger/pokemon-ge
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 # set up data folders
-data_path = Path('data/')
+data_path = Path('pc/')
 image_path = data_path / 'pokemon_images'
 
 train_dir = image_path / 'train'
@@ -526,10 +526,10 @@ if __name__ == '__main__':
     for pokemon in class_names:
         for folder in ['train', 'test']:
             # Path to the directory containing PNG files
-            input_dir = f'data/pokemon_images/{folder}/{pokemon}'
+            input_dir = f'pc/pokemon_images/{folder}/{pokemon}'
 
             # Path to the directory where JPG files will be saved
-            output_dir = f'data/pokemon_images/{folder}/{pokemon}'
+            output_dir = f'pc/pokemon_images/{folder}/{pokemon}'
 
             # Iterate over PNG files in the input directory
             base_file_type = '.jpg'
