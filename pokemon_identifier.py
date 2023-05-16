@@ -1,5 +1,5 @@
 # Name: Martin Jimenez
-# Date: 05/15/2023 (last updated)
+# Date: 05/16/2023 (last updated)
 
 import torch
 import torchvision.io
@@ -52,7 +52,7 @@ train_data = datasets.ImageFolder(root=str(train_dir),
 test_data = datasets.ImageFolder(root=str(test_dir),
                                  transform=test_transform)
 
-# img, label = next(iter(train_data))
+# img, label = list(iter(train_data))[2000]
 # plt.imshow(img.permute(1, 2, 0))
 # plt.show()
 
@@ -377,14 +377,17 @@ def set_confusion_matrix(model: torch.nn.Module,
     acc = 0
 
     model.eval()
-    with torch.inference_mode():
-        for X, y in dataloader:
-            pred = model(X)
+    with tqdm(total=len(dataloader), desc='Confusion Matrix', leave=False, ncols=75, disable=False) as confusion_bar:
+        with torch.inference_mode():
+            for X, y in dataloader:
+                pred = model(X)
 
-            pred_label = torch.argmax(pred, dim=1)
-            pred_labels.append(pred_label)
+                pred_label = torch.argmax(pred, dim=1)
+                pred_labels.append(pred_label)
 
-            acc += (pred_label == y).sum().item() / len(pred)
+                acc += (pred_label == y).sum().item() / len(pred)
+
+                confusion_bar.update()
 
     acc /= len(dataloader)
 
@@ -440,7 +443,7 @@ def load_model(model_name: str):
 
 
 if __name__ == '__main__':
-    # current_model = load_model(model_name='model_11_1-18.pth')
+    # current_model = load_model(model_name='model_11_1-26.pth')
     current_model = PokemonIdentifier(input_size=3,
                                       hidden_size=64,
                                       output_size=len(class_names)).to(device)
@@ -463,7 +466,7 @@ if __name__ == '__main__':
     print(f'Took {total_time:.2f}s to train the model')
 
     save_model(model=current_model,
-               model_name='model_11_1-26.pth')
+               model_name='model_11_1-36.pth')
 
     plot_loss_curves(results=model_results)
 
@@ -484,25 +487,6 @@ if __name__ == '__main__':
                            class_names=class_names,
                            device=device,
                            output_num=5)
-
-    # USE TO COUNT DATA IN FOLDERS
-    '''
-    total_train = 0
-    total_test = 0
-    for pokemon in class_names:
-        for folder in ['test', 'train']:
-            pokemon_path_list = list(image_path.glob(f'{folder}/{pokemon}/*.jpg'))
-            print(f'there are {len(pokemon_path_list)} images of {pokemon} in the {folder} folder')
-
-            if folder == 'test':
-                total_test += len(pokemon_path_list)
-            else:
-                total_train += len(pokemon_path_list)
-
-        print('\n')
-    print(f'there are {total_test} images in the test data')
-    print(f'there are {total_train} images in the train data')
-    '''
 
     # USE IN CASE THERE IS TOO MUCH DATA; MOVES DATA TO EXTRA FOLDER
     '''
@@ -554,4 +538,23 @@ if __name__ == '__main__':
                     img_file = os.path.join(input_dir, filename)
                     convert_file_to_jpg(img_file, output_dir)
                     os.remove(img_file)
+    '''
+
+    # USE TO COUNT DATA IN FOLDERS
+    '''
+    total_train = 0
+    total_test = 0
+    for pokemon in class_names:
+        for folder in ['test', 'train']:
+            pokemon_path_list = list(image_path.glob(f'{folder}/{pokemon}/*.jpg'))
+            print(f'there are {len(pokemon_path_list)} images of {pokemon} in the {folder} folder')
+
+            if folder == 'test':
+                total_test += len(pokemon_path_list)
+            else:
+                total_train += len(pokemon_path_list)
+
+        print('\n')
+    print(f'there are {total_test} images in the test data')
+    print(f'there are {total_train} images in the train data')
     '''
