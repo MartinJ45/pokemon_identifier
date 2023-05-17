@@ -1,5 +1,5 @@
 # Name: Martin Jimenez
-# Date: 05/16/2023 (last updated)
+# Date: 05/17/2023 (last updated)
 
 import torch
 import torchvision.io
@@ -434,7 +434,7 @@ def load_model(model_name: str):
     model_save_path = model_path / model_name
 
     loaded_model = PokemonIdentifier(input_size=3,
-                                     hidden_size=64,
+                                     hidden_size=96,
                                      output_size=len(class_names))
 
     loaded_model.load_state_dict(torch.load(model_save_path))
@@ -443,9 +443,9 @@ def load_model(model_name: str):
 
 
 if __name__ == '__main__':
-    # current_model = load_model(model_name='model_11_1-26.pth')
+    # current_model = load_model(model_name='model_13_1-36.pth')
     current_model = PokemonIdentifier(input_size=3,
-                                      hidden_size=64,
+                                      hidden_size=96,
                                       output_size=len(class_names)).to(device)
     loss_function = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(params=current_model.parameters(),
@@ -458,7 +458,7 @@ if __name__ == '__main__':
                                 test_dataloader=test_dataloader,
                                 loss_fn=loss_function,
                                 optimizer=optimizer,
-                                epochs=10,
+                                epochs=40,
                                 device=device)
 
     end_time = time.time()
@@ -466,7 +466,7 @@ if __name__ == '__main__':
     print(f'Took {total_time:.2f}s to train the model')
 
     save_model(model=current_model,
-               model_name='model_11_1-36.pth')
+               model_name='model_13_1-45.pth')
 
     plot_loss_curves(results=model_results)
 
