@@ -330,7 +330,11 @@ def make_single_prediction(model: torch.nn.Module,
     with torch.inference_mode():
         image = image.unsqueeze(dim=0)
 
-        image_pred = model(image.to(device))
+        try:
+            image_pred = model(image.to(device))
+        except Exception as error:
+            print(f'Error: {repr(error)}')
+            print(f'Image path: {img_path}')
 
     pred_percent = image_pred.softmax(dim=1)
 
@@ -403,7 +407,9 @@ def set_confusion_matrix(model: torch.nn.Module,
     # plot the confusion matrix
     fig, ax = plot_confusion_matrix(conf_mat=confmat_tensor.numpy(),
                                     class_names=class_names,
-                                    figsize=(10, 7))
+                                    figsize=(10, 7),
+                                    show_num=False,
+                                    colorbar=True)
 
     mode = str(dataloader.dataset.root).split('pokemon_images\\')[1]
     print(f'Model Accuracy for {mode} data is {acc*100:.2f}%')
@@ -443,43 +449,47 @@ def load_model(model_name: str):
 
 
 if __name__ == '__main__':
-    # current_model = load_model(model_name='model_13_1-36.pth')
-    current_model = PokemonIdentifier(input_size=3,
-                                      hidden_size=96,
-                                      output_size=len(class_names)).to(device)
-    loss_function = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(params=current_model.parameters(),
-                                 lr=0.001)
-
-    start_time = time.time()
-
-    model_results = train_model(model=current_model,
-                                train_dataloader=train_dataloader,
-                                test_dataloader=test_dataloader,
-                                loss_fn=loss_function,
-                                optimizer=optimizer,
-                                epochs=40,
-                                device=device)
-
-    end_time = time.time()
-    total_time = end_time - start_time
-    print(f'Took {total_time:.2f}s to train the model')
-
-    save_model(model=current_model,
-               model_name='model_13_1-45.pth')
-
-    plot_loss_curves(results=model_results)
-
+    current_model = load_model(model_name='test_model.pth')
+    # current_model = PokemonIdentifier(input_size=3,
+    #                                   hidden_size=96,
+    #                                   output_size=len(class_names)).to(device)
+    # loss_function = nn.CrossEntropyLoss()
+    # optimizer = torch.optim.Adam(params=current_model.parameters(),
+    #                              lr=0.001)
+    #
+    # start_time = time.time()
+    #
+    # model_results = train_model(model=current_model,
+    #                             train_dataloader=train_dataloader,
+    #                             test_dataloader=test_dataloader,
+    #                             loss_fn=loss_function,
+    #                             optimizer=optimizer,
+    #                             epochs=10,
+    #                             device=device)
+    #
+    # end_time = time.time()
+    # total_time = end_time - start_time
+    #
+    # minutes, seconds = divmod(total_time, 60)
+    # hours, minutes = divmod(minutes, 60)
+    #
+    # print(f'Took {int(hours):02d}:{int(minutes):02d}:{int(seconds):02d} to train the model')
+    #
+    # save_model(model=current_model,
+    #            model_name='test_model.pth')
+    #
+    # plot_loss_curves(results=model_results)
+    #
     simple_transform = transforms.Compose([transforms.Resize(size=(224, 224), antialias=True)])
-
-    set_confusion_matrix(model=current_model,
-                         class_names=class_names,
-                         dataloader=test_dataloader)
-
-    make_predictions(model=current_model,
-                     class_names=class_names,
-                     dataloader=test_dataloader,
-                     device=device)
+    #
+    # set_confusion_matrix(model=current_model,
+    #                      class_names=class_names,
+    #                      dataloader=test_dataloader)
+    #
+    # make_predictions(model=current_model,
+    #                  class_names=class_names,
+    #                  dataloader=test_dataloader,
+    #                  device=device)
 
     make_single_prediction(model=current_model,
                            transform=simple_transform,
