@@ -71,6 +71,7 @@ test_dataloader = DataLoader(dataset=test_data,
 # visualize images
 image_path_list = list(image_path.glob('*/*/*.jpg'))
 
+'''
 response = 'NULL'
 while response != '':
     random_image_path = random.choice(image_path_list)
@@ -86,6 +87,7 @@ while response != '':
         os.remove(random_image_path)
     else:
         print(f'did not remove {random_image_path}\n')
+'''
 
 
 # make the model
@@ -123,9 +125,13 @@ class PokemonIdentifier(nn.Module):
                                                   out_features=output_size))
 
     def forward(self, x):
-        x = self.conv_block_1(x)    # 32, 3, 224, 224 -> 32, 10, 112, 112
-        x = self.conv_block_2(x)    # 32, 10, 112, 112 -> 32, 10, 56, 56
-        x = self.classifier(x)      # 32, 10, 56, 56 -> 32, 9
+        # print('1', x.shape)
+        x = self.conv_block_1(x)    # 32, 3, 224, 224 -> 32, 112, 112, 112
+        # print('2', x.shape)
+        x = self.conv_block_2(x)    # 32, 112, 112, 112 -> 32, 112, 56, 56
+        # print('3', x.shape)
+        x = self.classifier(x)      # 32, 112, 56, 56 -> 32, len(class_names)
+        # print('4', x.shape)
         return x
 
 
@@ -213,7 +219,7 @@ def train_model(model: torch.nn.Module,
                 epochs: int,
                 device = device):
     """Runs train and test loops for a given number of epochs"""
-    print(f'Training model...\n')
+    print(f'Training model on {device}...\n')
 
     results = {'train_loss': [],
                'train_acc': [],
@@ -293,7 +299,7 @@ def make_predictions(model: torch.nn.Module,
 
             image = dataloader.dataset[random_idx][0]
 
-            pred_label = model(image.unsqueeze(0)).argmax(dim=1)
+            pred_label = model(image.unsqueeze(0).to(device)).argmax(dim=1)
             truth_label = dataloader.dataset[random_idx][1]
 
             fig.add_subplot(rows, cols, i)
@@ -373,7 +379,8 @@ def print_predictions(prediction: torch.tensor,
 
 def set_confusion_matrix(model: torch.nn.Module,
                          class_names: List[str],
-                         dataloader: torch.utils.data.DataLoader):
+                         dataloader: torch.utils.data.DataLoader,
+                         device = device):
     """Plots a confusion matrix on a trained model"""
     # make predictions with trained model
     pred_labels = []
@@ -383,7 +390,9 @@ def set_confusion_matrix(model: torch.nn.Module,
     model.eval()
     with tqdm(total=len(dataloader), desc='Confusion Matrix', leave=False, ncols=75, disable=False) as confusion_bar:
         with torch.inference_mode():
-            for X, y in dataloader:
+            for batch, (X, y) in enumerate(dataloader):
+                X, y = X.to(device), y.to(device)
+
                 pred = model(X)
 
                 pred_label = torch.argmax(pred, dim=1)
@@ -401,14 +410,14 @@ def set_confusion_matrix(model: torch.nn.Module,
     # setup confusion matrix
     confmat = ConfusionMatrix(num_classes=len(class_names),
                               task='multiclass')
-    confmat_tensor = confmat(preds=pred_labels_tensor,
+
+    confmat_tensor = confmat(preds=pred_labels_tensor.to('cpu'),
                              target=torch.from_numpy(np.array(dataloader.dataset.targets)))
 
     # plot the confusion matrix
     fig, ax = plot_confusion_matrix(conf_mat=confmat_tensor.numpy(),
                                     class_names=class_names,
                                     figsize=(10, 7),
-                                    show_num=False,
                                     colorbar=True)
 
     mode = str(dataloader.dataset.root).split('pokemon_images\\')[1]
@@ -431,7 +440,8 @@ def save_model(model: torch.nn.Module,
     torch.save(model.state_dict(), model_save_path)
 
 
-def load_model(model_name: str):
+def load_model(model_name: str,
+               device = device):
     """Loads a saved model from the 'model_saves' folder"""
     # load the model
     model_path = Path('model_saves')
@@ -440,8 +450,8 @@ def load_model(model_name: str):
     model_save_path = model_path / model_name
 
     loaded_model = PokemonIdentifier(input_size=3,
-                                     hidden_size=96,
-                                     output_size=len(class_names))
+                                     hidden_size=128,
+                                     output_size=len(class_names)).to(device)
 
     loaded_model.load_state_dict(torch.load(model_save_path))
 
@@ -449,47 +459,49 @@ def load_model(model_name: str):
 
 
 if __name__ == '__main__':
-    current_model = load_model(model_name='test_model.pth')
-    # current_model = PokemonIdentifier(input_size=3,
-    #                                   hidden_size=96,
-    #                                   output_size=len(class_names)).to(device)
-    # loss_function = nn.CrossEntropyLoss()
-    # optimizer = torch.optim.Adam(params=current_model.parameters(),
-    #                              lr=0.001)
-    #
-    # start_time = time.time()
-    #
-    # model_results = train_model(model=current_model,
-    #                             train_dataloader=train_dataloader,
-    #                             test_dataloader=test_dataloader,
-    #                             loss_fn=loss_function,
-    #                             optimizer=optimizer,
-    #                             epochs=10,
-    #                             device=device)
-    #
-    # end_time = time.time()
-    # total_time = end_time - start_time
-    #
-    # minutes, seconds = divmod(total_time, 60)
-    # hours, minutes = divmod(minutes, 60)
-    #
-    # print(f'Took {int(hours):02d}:{int(minutes):02d}:{int(seconds):02d} to train the model')
-    #
-    # save_model(model=current_model,
-    #            model_name='test_model.pth')
-    #
-    # plot_loss_curves(results=model_results)
-    #
+    # current_model = load_model(model_name='model_15_1-76.pth',
+    #                            device=device)
+    current_model = PokemonIdentifier(input_size=3,
+                                      hidden_size=112,
+                                      output_size=len(class_names)).to(device)
+    loss_function = nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(params=current_model.parameters(),
+                                 lr=0.001)
+
+    start_time = time.time()
+
+    model_results = train_model(model=current_model,
+                                train_dataloader=train_dataloader,
+                                test_dataloader=test_dataloader,
+                                loss_fn=loss_function,
+                                optimizer=optimizer,
+                                epochs=10,
+                                device=device)
+
+    end_time = time.time()
+    total_time = end_time - start_time
+
+    minutes, seconds = divmod(total_time, 60)
+    hours, minutes = divmod(minutes, 60)
+
+    print(f'Took {int(hours):02d}:{int(minutes):02d}:{int(seconds):02d} to train the model')
+
+    save_model(model=current_model,
+               model_name='TEST.pth')
+
+    plot_loss_curves(results=model_results)
+
     simple_transform = transforms.Compose([transforms.Resize(size=(224, 224), antialias=True)])
-    #
-    # set_confusion_matrix(model=current_model,
-    #                      class_names=class_names,
-    #                      dataloader=test_dataloader)
-    #
-    # make_predictions(model=current_model,
-    #                  class_names=class_names,
-    #                  dataloader=test_dataloader,
-    #                  device=device)
+
+    set_confusion_matrix(model=current_model,
+                         class_names=class_names,
+                         dataloader=test_dataloader,
+                         device=device)
+
+    make_predictions(model=current_model,
+                     class_names=class_names,
+                     dataloader=test_dataloader,
+                     device=device)
 
     make_single_prediction(model=current_model,
                            transform=simple_transform,
@@ -516,8 +528,14 @@ if __name__ == '__main__':
     # USE IN CASE ALL IMAGES AREN'T IN JPG FILE FORMAT:
     '''
     def convert_file_to_jpg(img_file, output_dir):
-        # Open the PNG image
-        image = Image.open(img_file)
+        # Open the image
+        try:
+            image = Image.open(img_file)
+        except Exception as error:
+            print(f'Ran into an error: {repr(error)}')
+            print(f'Deleting {img_file}...')
+            os.remove(img_file)
+            return
 
         # Convert the image to RGB format (if it's not already)
         if image.mode != 'RGB':
@@ -531,7 +549,7 @@ if __name__ == '__main__':
         image.save(jpg_file, 'JPEG')
 
         print(f"Converted {img_file} to {jpg_file}")
-
+    
 
     for pokemon in class_names:
         for folder in ['train', 'test']:
@@ -547,7 +565,8 @@ if __name__ == '__main__':
                 if not filename.endswith(base_file_type):
                     img_file = os.path.join(input_dir, filename)
                     convert_file_to_jpg(img_file, output_dir)
-                    os.remove(img_file)
+                    if os.path.isfile(img_file):
+                        os.remove(img_file)
     '''
 
     # USE TO COUNT DATA IN FOLDERS
